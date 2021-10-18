@@ -42,5 +42,40 @@ CHIP ALU {
         ng; // 1 if (out < 0),  0 otherwise
 
     PARTS:
-   // Put you code here:
+        // zx and yx
+        Mux16(a=x, b=false, sel=zx, out=tempzx);
+        Mux16(a=y, b=false, sel=zy, out=tempzy);
+
+        // nx and ny
+        Not16(in=tempzx, out=tempnx);
+        Not16(in=tempzy, out=tempny);
+        Mux16(a=tempzx, b=tempnx, sel=nx, out=stageNX);
+        Mux16(a=tempzy, b=tempny, sel=ny, out=stageNY);
+
+        // f
+        Add16(a=stageNX, b=stageNY, out=stageFaddition);
+        And16(a=stageNX, b=stageNY, out=stageFand);
+        Mux16(a=stageFand, b=stageFaddition, sel=f, out=endStageF);
+
+        // no
+        Not16(in=endStageF, out=notLastStage);
+        Mux16(a=endStageF, b=notLastStage, sel=no, out[0..7]=tempFinalFirst);
+        Mux16(a=endStageF, b=notLastStage, sel=no, out[8..15]=tempFinalTwo);
+        Mux16(a=endStageF, b=notLastStage, sel=no, out=tempFinal);
+        Mux16(a=endStageF, b=notLastStage, sel=no, out=out);
+
+        //zr
+        //Not16(in=tempFinal, out=notTempFinal);
+        //And16(a=notTempFinal, b=true, out[0]=tempzr);
+        Or8Way(in=tempFinalFirst, out=zeroFirst);
+        Or8Way(in=tempFinalTwo, out=zeroTwo);
+        Not(in=zeroFirst, out=LastZeroOne);
+        Not(in=zeroTwo, out=LastZeroTwo);
+        And(a=LastZeroOne, b=LastZeroTwo, out=zr);
+        //And(a=tempzr, b=true, out=zr);
+
+        //ng
+        And16(a=tempFinal, b=true, out[15]=tempNeg);
+        And(a=tempNeg, b=true, out=ng);
+        
 }
