@@ -39,5 +39,67 @@ CHIP CPU {
         pc[15];          // address of next instruction
 
     PARTS:
-    // Put your code here:
+    Not(in=instruction[15], out=isA);
+    // 001 1000000 111 001 - A instruction a=1, ALU=D&M, dest=AMD, jmp=001, @12345
+    // 111 0110000 010 000 - D instruction a=0, ALU=M, dest=D, jmp=null, D=A
+    // 000 0001111 101 011
+    // A instruction
+    Mux16(a=outMPipeBack, b=instruction, sel=isA, out=outMuxA);
+    And(a=instruction[15], b=instruction[5], out=writeA);
+    Or(a=writeA, b=isA, out=loadRegisterA);
+    ARegister(in=outMuxA, load=loadRegisterA, out=outRegisterA, out[0..14]=addressM);
+    Mux16(a=outRegisterA, b=inM, sel=instruction[12], out=outputAorM);
+
+    // D output
+    DRegister(in=outMPipeBack, load=instruction[4], out=outputD);
+    
+    // ALU
+    ALU(x=outputD, y=outputAorM, zx=instruction[11], nx=instruction[10], zy=instruction[9], ny=instruction[8], f=instruction[7], no=instruction[6], out=tempOutALU, out=outMPipeBack, zr=outZ, ng=outNg);
+    And(a=instruction[15], b=instruction[3], out=tempOutM, out=writeM);
+    Mux16(a=false, b=tempOutALU, sel=tempOutM, out=outM);
+    // And(a=instruction[4], b=tempOutM, out=outM)
+    
+    // Program Counter
+    DMux8Way(in=true, sel=instruction[0..2], a=nullJump, b=jgt, c=jeq, d=jge, e=jlt, f=jne, g=jle, h=jmp);
+
+    // Is positive
+    Not(in=outZ, out=notZ);
+    Not(in=outNg, out=outPos);
+
+    // jgt
+    And(a=jgt, b=outPos, out=jgtStage1);
+    And(a=jgtStage1, b=notZ, out=jgtOut);
+
+    // jeq
+    And(a=jeq, b=outZ, out=jeqOut);
+
+    // jge
+    And(a=jge, b=outPos, out=jgeStage1);
+    And(a=jge, b=outZ, out=jgeStage2);
+    Or(a=jgeStage1, b=jgeStage2, out=jgeOut);
+
+    // jlt
+    And(a=jlt, b=outNg, out=jltStage1);
+    And(a=jltStage1, b=notZ, out=jltOut);
+
+    // jne
+    And(a=jne, b=notZ, out=jneOut);
+
+    // jle
+    And(a=jle, b=outNg, out=jleStage1);
+    And(a=jle, b=outZ, out=jleStage2);
+    Or(a=jleStage1, b=jleStage2, out=jleOut);
+    
+    Or(a=jgtOut, b=jeqOut, out=firstOut);
+    Or(a=firstOut, b=jgeOut, out=secondOut);
+    Or(a=secondOut, b=jltOut, out=thirdOut);
+    Or(a=thirdOut, b=jneOut, out=fourthOut);
+    Or(a=fourthOut, b=jleOut, out=fifthOut);
+    Or(a=fifthOut, b=jmp, out=finalOut);
+
+    And(a=finalOut, b=instruction[15], out=checkInstruction);
+    Not(in=checkInstruction, out=noJumps);
+    Or(a=noJumps, b=nullJump, out=incCondition);
+
+    PC(in=outRegisterA, load=checkInstruction, inc=incCondition, reset=reset, out[0..14]=pc);
 }

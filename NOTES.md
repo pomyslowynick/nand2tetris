@@ -14,3 +14,7 @@ In video 4.7 there is a great quote from Donald Knuth that I haven't seen before
 In Hack machine language there is only one type of variable, 16 bits of data.
 
 Pointers seem quite easy from the hardware perspective, or maybe it's because I have already learnt about them in C?
+
+## 23/10/2021
+Von Neumann architecture.
+Universal Turing Machine.

@@ -27,5 +27,28 @@ CHIP Memory {
     OUT out[16];
 
     PARTS:
-    // Put your code here:
+    // Keyboard 110 0000 0000 0000
+    Keyboard(out=tempKbd);
+
+    // RAM 011 1111 1111 1111 = 16383 - last RAM address
+    Not(in=address[14], out=notAddress14);
+    And(a=notAddress14, b=load, out=loadRam);
+    RAM16K(in=in, load=loadRam, address=address[0..13], out=tempRam);
+
+    // Screen 100 0000 0000 0000 = 16384 - first address
+    Not(in=address[13], out=tempNot13);
+    And(a=tempNot13, b=address[14], out=screenOut);
+    And(a=screenOut, b=load, out=screenLoad);
+    Screen(in=in, load=screenLoad, address=address[0..12], out=finalScreen);
+    Mux4Way16(a=tempRam, b=tempRam, c=finalScreen, d=tempKbd, sel=address[13..14], out=out);
+
+    // Left over own implementation of the screen
+    // RAM4K(in=in, load=lowerLoad, address=address[2..13], out=tempScreenLower);
+    // RAM4K(in=in, load=upperLoad, address=address[2..13], out=tempScreenUpper);
+    // Mux16(a=tempScreenLower, b=tempScreenUpper, sel=address[12], out=finalScreen);
+
+    // Turns out I didn't need to implement the keyboard? ;(
+    // And(a=address[13], b=address[14], out=kbdOut);
+    // And(a=kbdOut, b=load, out=loadKbd);
+    // Register(in=in, load=loadKbd, out=tempKbd);
 }
