@@ -17,8 +17,9 @@ func main() {
 		panic(err)
 	}
 	defer sourceFile.Close()
-
-	compiledFileName := strings.Split(os.Args[1], ".")[0]
+	// Windows variant of slash
+	lastSlash := strings.LastIndex(os.Args[1], "\\")
+	compiledFileName := strings.Split(os.Args[1][lastSlash+1:], ".")[0]
 	outputFile, err := os.Create(compiledFileName + ".hack")
 	if err != nil {
 		panic(err)
@@ -27,25 +28,65 @@ func main() {
 
 	w := bufio.NewWriter(outputFile)
 	scanner := bufio.NewScanner(sourceFile)
+	lineCounter := 0
+	labelsTable := make(map[string]int)
+
+	// First pass labels scan
 	for scanner.Scan() {
 		text := scanner.Text()
-		fmt.Println(text)
-		val := Parse(text)
+		newLineCounter := ParseFirstPass(text, lineCounter, labelsTable)
+		lineCounter += newLineCounter
+	}
+	// fmt.Println(labelsTable)
+	if err := scanner.Err(); err != nil {
+		log.Fatal(err)
+	}
+	sourceFile2, err := os.Open(os.Args[1])
+	if err != nil {
+		fmt.Println("Error reading file")
+		panic(err)
+	}
+	scanner2 := bufio.NewScanner(sourceFile2)
+	symbolCounter := 16
+	for scanner2.Scan() {
+		text := scanner2.Text()
+		// fmt.Println(text)
+		val, symbolVal := Parse(text, lineCounter, labelsTable, symbolCounter)
 		if val != (Instruction{}) {
-			fmt.Printf("%+v\n", val)
+			// fmt.Printf("%+v\n", val)
 			translatedCode := TranslateAssembly(val)
 			_, err = fmt.Fprintf(w, "%s\n", translatedCode)
 			if err != nil {
 				panic(err)
 			}
 		}
+		symbolCounter += symbolVal
 	}
 	w.Flush()
-
-	if err := scanner.Err(); err != nil {
+	fmt.Println(labelsTable)
+	if err := scanner2.Err(); err != nil {
 		log.Fatal(err)
 	}
 
+}
+
+func ParseFirstPass(line string, lineCounter int, labelsTable map[string]int) int {
+	SetupTable(labelsTable)
+	trimmedLine := strings.TrimSpace(line)
+	if strings.HasPrefix(trimmedLine, "//") || len(trimmedLine) == 0 {
+		return 0
+	} else if strings.HasPrefix(trimmedLine, "(") {
+		AddLabel(trimmedLine, labelsTable, lineCounter)
+		return 0
+	} else {
+		return 1
+	}
+}
+
+func AddLabel(line string, labelsTable map[string]int, lineCounter int) {
+	lineNoFrontBracket := strings.SplitAfter(line, "(")[1]
+	lineFinal := lineNoFrontBracket[0 : len(lineNoFrontBracket)-1]
+	labelsTable[lineFinal] = lineCounter
 }
 
 func TranslateAssembly(instruction Instruction) string {
@@ -184,10 +225,7 @@ func TranslateJump(jump string) (translated string) {
 
 func TranslateAInstruction(instruction Instruction) (translated string) {
 	translated += "0"
-	fmt.Println(instruction.value)
-	fmt.Println(int64(instruction.value))
 	s := strconv.FormatInt(int64(instruction.value), 2)
-	fmt.Println(s)
 
 	for i := 0; i < 15-len(s); i++ {
 		translated += "0"
@@ -205,16 +243,31 @@ type Instruction struct {
 	value        int
 }
 
-func Parse(line string) Instruction {
+func SetupTable(labelsTable map[string]int) {
+	for i := 0; i < 16; i++ {
+		labelsTable["R"+strconv.Itoa(i)] = i
+	}
+
+	labelsTable["SCREEN"] = 16384
+	labelsTable["KBD"] = 24576
+	labelsTable["SP"] = 0
+	labelsTable["LCL"] = 1
+	labelsTable["ARG"] = 2
+	labelsTable["THIS"] = 3
+	labelsTable["THAT"] = 4
+}
+
+func Parse(line string, lineCounter int, labelsTable map[string]int, symbolCounter int) (Instruction, int) {
 	trimmedLine := strings.TrimSpace(line)
-	if strings.HasPrefix(line, "//") || len(trimmedLine) == 0 {
-		return Instruction{}
-	} else if strings.HasPrefix(line, "@") {
-		return ParseAinstruction(line)
-	} else if strings.HasPrefix(line, "(") {
-		return ParseSymbol(line)
+	if strings.HasPrefix(trimmedLine, "//") || len(trimmedLine) == 0 {
+		return Instruction{}, 0
+	} else if strings.HasPrefix(trimmedLine, "@") {
+		instruction, symbolVal := ParseAinstruction(trimmedLine, labelsTable, symbolCounter)
+		return instruction, symbolVal
+	} else if strings.HasPrefix(trimmedLine, "(") {
+		return Instruction{}, 0
 	} else {
-		return ParseCinstruction(line)
+		return ParseCinstruction(trimmedLine), 0
 	}
 }
 
@@ -222,10 +275,10 @@ func ParseCinstruction(line string) Instruction {
 	instruction := new(Instruction)
 	instruction.controlsBits = "111"
 	instruction.instType = 1
-	splitInLineComment := strings.SplitAfter(line, "//")[0]
-	dest := strings.SplitAfter(splitInLineComment, "=")
+	splitInLineComment := strings.Split(line, "//")[0]
+	dest := strings.Split(splitInLineComment, "=")
 	if len(dest) == 2 {
-		instruction.dest = strings.TrimSpace(dest[0])[:len(dest)-1]
+		instruction.dest = strings.TrimSpace(dest[0])
 	}
 
 	jump := strings.SplitAfter(splitInLineComment, ";")
@@ -238,25 +291,35 @@ func ParseCinstruction(line string) Instruction {
 	} else if len(dest) == 2 {
 		instruction.comp = strings.TrimSpace(dest[1])
 	} else if len(jump) == 2 {
-		instruction.comp = strings.TrimSpace(jump[1])
+		tempComp := strings.TrimSpace(jump[0])
+		instruction.comp = tempComp[:len(tempComp)-1]
 	} else {
 		instruction.comp = splitInLineComment
 	}
 	return *instruction
 }
 
-func ParseAinstruction(line string) Instruction {
+func ParseAinstruction(line string, labelsTable map[string]int, symbolCounter int) (Instruction, int) {
+	var symbolVal int
 	instruction := new(Instruction)
 	instruction.instType = 0
 	instruction.controlsBits = "0"
-	val, err := strconv.Atoi(strings.SplitAfter(line, "@")[1])
+	instrValue := strings.SplitAfter(line, "@")[1]
+	instrValue = strings.TrimSpace(instrValue)
+	val, err := strconv.Atoi(instrValue)
 	if err != nil {
-		fmt.Println("Error converting to A instruction value to Integer")
+		symbolVal = AddSymbol(instrValue, labelsTable, symbolCounter)
+		instruction.value = labelsTable[instrValue]
+	} else {
+		instruction.value = val
 	}
-	instruction.value = val
-	return *instruction
+	return *instruction, symbolVal
 }
 
-func ParseSymbol(line string) Instruction {
-	return Instruction{}
+func AddSymbol(line string, labelsTable map[string]int, symbolCounter int) int {
+	if _, ok := labelsTable[line]; ok {
+		return 0
+	}
+	labelsTable[line] = symbolCounter
+	return 1
 }
