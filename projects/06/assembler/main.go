@@ -37,7 +37,6 @@ func main() {
 		newLineCounter := ParseFirstPass(text, lineCounter, labelsTable)
 		lineCounter += newLineCounter
 	}
-	// fmt.Println(labelsTable)
 	if err := scanner.Err(); err != nil {
 		log.Fatal(err)
 	}
@@ -50,10 +49,8 @@ func main() {
 	symbolCounter := 16
 	for scanner2.Scan() {
 		text := scanner2.Text()
-		// fmt.Println(text)
 		val, symbolVal := Parse(text, lineCounter, labelsTable, symbolCounter)
 		if val != (Instruction{}) {
-			// fmt.Printf("%+v\n", val)
 			translatedCode := TranslateAssembly(val)
 			_, err = fmt.Fprintf(w, "%s\n", translatedCode)
 			if err != nil {
@@ -63,7 +60,6 @@ func main() {
 		symbolCounter += symbolVal
 	}
 	w.Flush()
-	fmt.Println(labelsTable)
 	if err := scanner2.Err(); err != nil {
 		log.Fatal(err)
 	}

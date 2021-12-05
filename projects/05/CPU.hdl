@@ -43,6 +43,7 @@ CHIP CPU {
     // 001 1000000 111 001 - A instruction a=1, ALU=D&M, dest=AMD, jmp=001, @12345
     // 111 0110000 010 000 - D instruction a=0, ALU=M, dest=D, jmp=null, D=A
     // 000 0001111 101 011
+    // 111 1110000 010 000
     // A instruction
     Mux16(a=outMPipeBack, b=instruction, sel=isA, out=outMuxA);
     And(a=instruction[15], b=instruction[5], out=writeA);
@@ -51,7 +52,8 @@ CHIP CPU {
     Mux16(a=outRegisterA, b=inM, sel=instruction[12], out=outputAorM);
 
     // D output
-    DRegister(in=outMPipeBack, load=instruction[4], out=outputD);
+    And(a=instruction[15], b=instruction[4], out=loadD);
+    DRegister(in=outMPipeBack, load=loadD, out=outputD);
     
     // ALU
     ALU(x=outputD, y=outputAorM, zx=instruction[11], nx=instruction[10], zy=instruction[9], ny=instruction[8], f=instruction[7], no=instruction[6], out=tempOutALU, out=outMPipeBack, zr=outZ, ng=outNg);
