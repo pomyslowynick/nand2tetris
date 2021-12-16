@@ -71,3 +71,4 @@ VM Parser components:
 
 Back on it after almost a month, spent almost all of my time on Programming Languages course. I have forgotten few things about how the stack machine is organized, but I am going to revise the material and get the first homework done :) 
 
+Mobile devices use a different model for their VM translation, a register machine.
