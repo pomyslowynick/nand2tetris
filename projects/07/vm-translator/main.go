@@ -19,6 +19,8 @@ type VMCommand struct {
 	value        string
 }
 
+var LabelGlobalVar = 0
+
 func main() {
 	if len(os.Args) < 2 {
 		fmt.Println("Provide the filename for translation")
@@ -235,7 +237,6 @@ func TranslatePushLATT(memoryRegion string, value string) (translatedCommand str
 
 func TranslatePushStatic(value string) (translatedCommand string) {
 	translatedCommand += fmt.Sprintf("@Foo.%s\n", value)
-	translatedCommand += "A=M\n"
 	translatedCommand += "D=M\n"
 	translatedCommand += "@SP\n"
 	translatedCommand += "A=M\n"
@@ -253,7 +254,6 @@ func TranslatePushTemp(value string) (translatedCommand string) {
 	tempAddr := fmt.Sprintf("%s", strconv.Itoa(5+convertedValue))
 
 	translatedCommand += fmt.Sprintf("@%s\n", tempAddr)
-	// translatedCommand += "A=M\n"
 	translatedCommand += "D=M\n"
 	translatedCommand += "@SP\n"
 	translatedCommand += "A=M\n"
@@ -275,7 +275,7 @@ func TranslatePushConstant(value string) (translatedCommand string) {
 }
 
 func TranslateAlgebraVMCommand(vmCommand VMCommand) (translatedCommand string) {
-
+	LabelGlobalVar += 1
 	switch vmCommand.command {
 	case "add":
 		// Pop the first value into D
@@ -330,9 +330,26 @@ func TranslateAlgebraVMCommand(vmCommand VMCommand) (translatedCommand string) {
 		translatedCommand += "@SP\n"
 		translatedCommand += "M=M-1\n"
 		translatedCommand += "A=M\n"
-		translatedCommand += "D=D&M\n"
-		translatedCommand += "M=D\n"
+		translatedCommand += "D=D-M\n"
+		translatedCommand += fmt.Sprintf("@ARE_EQUAL_%d\n", LabelGlobalVar)
+		translatedCommand += "D;JEQ\n"
+		translatedCommand += fmt.Sprintf("@NOT_EQUAL_%d\n", LabelGlobalVar)
+		translatedCommand += "0;JMP\n"
+
+		// Both stack entries are equal
+		translatedCommand += fmt.Sprintf("(ARE_EQUAL_%d)\n", LabelGlobalVar)
+		translatedCommand += "@SP\n"
+		translatedCommand += "A=M\n"
+		translatedCommand += "M=-1\n"
+		translatedCommand += fmt.Sprintf("@END_EQUAL_%d\n", LabelGlobalVar)
+		translatedCommand += "0;JMP\n"
 		// Increment the stack pointer
+		translatedCommand += fmt.Sprintf("(NOT_EQUAL_%d)\n", LabelGlobalVar)
+		translatedCommand += "@SP\n"
+		translatedCommand += "A=M\n"
+		translatedCommand += "M=0\n"
+
+		translatedCommand += fmt.Sprintf("(END_EQUAL_%d)\n", LabelGlobalVar)
 		translatedCommand += "@SP\n"
 		translatedCommand += "M=M+1\n"
 	case "gt":
@@ -346,29 +363,62 @@ func TranslateAlgebraVMCommand(vmCommand VMCommand) (translatedCommand string) {
 		translatedCommand += "@SP\n"
 		translatedCommand += "M=M-1\n"
 		translatedCommand += "A=M\n"
-		translatedCommand += "D=DM\n"
-		translatedCommand += "M=D\n"
+		translatedCommand += "D=M-D\n"
+		translatedCommand += fmt.Sprintf("@IS_GREATER_%d\n", LabelGlobalVar)
+		translatedCommand += "D;JGT\n"
+		translatedCommand += fmt.Sprintf("@NOT_GREATER_%d\n", LabelGlobalVar)
+		translatedCommand += "0;JMP\n"
+
+		// Both stack entries are equal
+		translatedCommand += fmt.Sprintf("(IS_GREATER_%d)\n", LabelGlobalVar)
+		translatedCommand += "@SP\n"
+		translatedCommand += "A=M\n"
+		translatedCommand += "M=-1\n"
+		translatedCommand += fmt.Sprintf("@END_GREATER_%d\n", LabelGlobalVar)
+		translatedCommand += "0;JMP\n"
 		// Increment the stack pointer
+		translatedCommand += fmt.Sprintf("(NOT_GREATER_%d)\n", LabelGlobalVar)
+		translatedCommand += "@SP\n"
+		translatedCommand += "A=M\n"
+		translatedCommand += "M=0\n"
+
+		translatedCommand += fmt.Sprintf("(END_GREATER_%d)\n", LabelGlobalVar)
 		translatedCommand += "@SP\n"
 		translatedCommand += "M=M+1\n"
 	case "lt":
-	case "and":
 		// Pop the first value into D
 		translatedCommand += "@SP\n"
 		translatedCommand += "M=M-1\n"
 		translatedCommand += "A=M\n"
 		translatedCommand += "D=M\n"
 
+		// Add D to SP-1
 		translatedCommand += "@SP\n"
 		translatedCommand += "M=M-1\n"
 		translatedCommand += "A=M\n"
-		translatedCommand += "D=D&M\n"
-		translatedCommand += "M=D\n"
+		translatedCommand += "D=M-D\n"
+		translatedCommand += fmt.Sprintf("@IS_LESSER_%d\n", LabelGlobalVar)
+		translatedCommand += "D;JLT\n"
+		translatedCommand += fmt.Sprintf("@NOT_LESSER_%d\n", LabelGlobalVar)
+		translatedCommand += "0;JMP\n"
+
+		// Both stack entries are equal
+		translatedCommand += fmt.Sprintf("(IS_LESSER_%d)\n", LabelGlobalVar)
+		translatedCommand += "@SP\n"
+		translatedCommand += "A=M\n"
+		translatedCommand += "M=-1\n"
+		translatedCommand += fmt.Sprintf("@END_LESSER_%d\n", LabelGlobalVar)
+		translatedCommand += "0;JMP\n"
 		// Increment the stack pointer
+		translatedCommand += fmt.Sprintf("(NOT_LESSER_%d)\n", LabelGlobalVar)
+		translatedCommand += "@SP\n"
+		translatedCommand += "A=M\n"
+		translatedCommand += "M=0\n"
+
+		translatedCommand += fmt.Sprintf("(END_LESSER_%d)\n", LabelGlobalVar)
 		translatedCommand += "@SP\n"
 		translatedCommand += "M=M+1\n"
-	case "or":
-		// Pop the first value into D
+	case "and":
 		translatedCommand += "@SP\n"
 		translatedCommand += "M=M-1\n"
 		translatedCommand += "A=M\n"
@@ -377,9 +427,28 @@ func TranslateAlgebraVMCommand(vmCommand VMCommand) (translatedCommand string) {
 		translatedCommand += "@SP\n"
 		translatedCommand += "M=M-1\n"
 		translatedCommand += "A=M\n"
-		translatedCommand += "D=D|M ; \n"
+		translatedCommand += "D=M&D\n"
+		translatedCommand += "@SP\n"
+		translatedCommand += "A=M\n"
 		translatedCommand += "M=D\n"
-		// Increment the stack pointer
+
+		translatedCommand += "@SP\n"
+		translatedCommand += "M=M+1\n"
+
+	case "or":
+		translatedCommand += "@SP\n"
+		translatedCommand += "M=M-1\n"
+		translatedCommand += "A=M\n"
+		translatedCommand += "D=M\n"
+
+		translatedCommand += "@SP\n"
+		translatedCommand += "M=M-1\n"
+		translatedCommand += "A=M\n"
+		translatedCommand += "D=M|D\n"
+		translatedCommand += "@SP\n"
+		translatedCommand += "A=M\n"
+		translatedCommand += "M=D\n"
+
 		translatedCommand += "@SP\n"
 		translatedCommand += "M=M+1\n"
 	case "not":
@@ -439,25 +508,24 @@ func GetVMCommand(line string) VMCommand {
 	case "pop":
 		return VMCommand{commandType: "memory", command: "pop", memoryRegion: splitLine[1], value: splitLine[2]}
 	case "add":
-		return VMCommand{commandType: "algebra", command: "add", memoryRegion: "", value: ""}
+		return VMCommand{commandType: "algebra", command: "add"}
 	case "sub":
-		return VMCommand{commandType: "algebra", command: "sub", memoryRegion: "", value: ""}
+		return VMCommand{commandType: "algebra", command: "sub"}
 	case "eq":
-		return VMCommand{commandType: "algebra", command: "eq", memoryRegion: "", value: ""}
+		return VMCommand{commandType: "algebra", command: "eq"}
+	case "neg":
+		return VMCommand{commandType: "algebra", command: "neg"}
+	case "gt":
+		return VMCommand{commandType: "algebra", command: "gt"}
+	case "lt":
+		return VMCommand{commandType: "algebra", command: "lt"}
+	case "and":
+		return VMCommand{commandType: "algebra", command: "and"}
+	case "or":
+		return VMCommand{commandType: "algebra", command: "or"}
+	case "not":
+		return VMCommand{commandType: "algebra", command: "not"}
 	default:
 		return VMCommand{commandType: "Unknown"}
 	}
-}
-func WritePushPop(line string) string {
-	return "Placeholder"
-}
-
-func WriteArithmetic(line string) string {
-	return "Placeholder"
-}
-
-func AddLabel(line string, labelsTable map[string]int, lineCounter int) {
-	lineNoFrontBracket := strings.SplitAfter(line, "(")[1]
-	lineFinal := lineNoFrontBracket[0 : len(lineNoFrontBracket)-1]
-	labelsTable[lineFinal] = lineCounter
 }
