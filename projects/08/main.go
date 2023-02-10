@@ -70,11 +70,11 @@ func ParseAndOpenVMFile(vmCommands *[]VMCommand) []VMCommand {
 					fmt.Println("Error reading file")
 					panic(err)
 				}
+				filename := strings.Split(item.Name(), ".")[0]
 				scanner := bufio.NewScanner(vmSourceFile)
 
 				for scanner.Scan() {
 					text := scanner.Text()
-					filename := strings.Split(sourceFile.Name(), ".")[0]
 					parseCommand := ParseLine(text, filename)
 					if parseCommand != (VMCommand{}) {
 						*vmCommands = append(*vmCommands, parseCommand)
@@ -190,8 +190,6 @@ func TranslateMemoryVMCommand(vmCommand VMCommand) (translatedCommand string) {
 
 func TranslateCallCommand(vmCommand VMCommand) (translatedCommand string) {
 
-	// Save the return address
-	translatedCommand += fmt.Sprintf("(RETURN_%s.%s)\n", vmCommand.file, vmCommand.name)
 	// Append to a global list of function names, to unwind the function call chains
 	// This here might be a hack, I wanted to prepend the value to treat this array like a FIFO stack
 	// There is probably a smarter way of doing this, in C++ I would use one of the std containers
@@ -201,6 +199,8 @@ func TranslateCallCommand(vmCommand VMCommand) (translatedCommand string) {
 	translatedCommand += "@SP\n"
 	translatedCommand += "A=M\n"
 	translatedCommand += "D=A\n"
+	translatedCommand += fmt.Sprintf("@%s\n", vmCommand.value)
+	translatedCommand += "D=D-A\n"
 	translatedCommand += "@ARG\n"
 	translatedCommand += "M=D\n"
 
@@ -244,6 +244,13 @@ func TranslateCallCommand(vmCommand VMCommand) (translatedCommand string) {
 	translatedCommand += "D=D-A\n"
 	translatedCommand += "@ARG\n"
 	translatedCommand += "M=D\n"
+
+	// Jump to the function
+	translatedCommand += fmt.Sprintf("@%s\n", vmCommand.name)
+	translatedCommand += "0;JMP\n"
+
+	// Save the return address
+	translatedCommand += fmt.Sprintf("(RETURN_%s.%s)\n", vmCommand.file, vmCommand.name)
 
 	return
 }
@@ -314,10 +321,11 @@ func TranslateReturnCommand(vmCommand VMCommand) (translatedCommand string) {
 	return
 }
 func TranslateFunctionCommand(vmCommand VMCommand) (translatedCommand string) {
-	translatedCommand += fmt.Sprintf("@%s.%s\n", vmCommand.file, vmCommand.value)
-	translatedCommand += "D=A\n"
-	translatedCommand += "@SP\n"
-	translatedCommand += "M=D+M\n"
+	// translatedCommand += fmt.Sprintf("@%s.%s\n", vmCommand.file, vmCommand.name)
+	translatedCommand += fmt.Sprintf("@%s\n", vmCommand.name)
+	// translatedCommand += "D=A\n"
+	// translatedCommand += "@SP\n"
+	// translatedCommand += "M=D+M\n"
 	noLocalVars, err := strconv.Atoi(vmCommand.value)
 	if err != nil {
 		panic(err)
@@ -752,8 +760,17 @@ func ParseLine(line string, file string) VMCommand {
 	}
 }
 
+func DiscardComments(splitLine string) string {
+	if strings.Contains(splitLine, "//") {
+		splitLine = strings.Split(splitLine, "//")[0]
+		return strings.Trim(splitLine, " \t")
+	}
+	return splitLine
+}
 func GetVMCommand(line string, file string) VMCommand {
+	line = DiscardComments(line)
 	splitLine := strings.Split(line, " ")
+	fmt.Println(splitLine)
 	switch splitLine[0] {
 	case "push":
 		return VMCommand{commandType: "memory", command: "push", memoryRegion: splitLine[1], value: splitLine[2]}
