@@ -24,8 +24,6 @@ type VMCommand struct {
 
 var LabelGlobalVar = 0
 var DirectoryName = ""
-var ListOfFunctionNames = make([]string, 0)
-var ListOfDeclaredFunctions = make([]string, 0)
 var CurrentFunction = "Sys.init"
 
 func main() {
@@ -191,12 +189,6 @@ func TranslateMemoryVMCommand(vmCommand VMCommand) (translatedCommand string) {
 }
 
 func TranslateCallCommand(vmCommand VMCommand) (translatedCommand string) {
-
-	// Append to a global list of function names, to unwind the function call chains
-	// This here might be a hack, I wanted to prepend the value to treat this array like a FIFO stack
-	// There is probably a smarter way of doing this, in C++ I would use one of the std containers
-	ListOfFunctionNames = append([]string{fmt.Sprintf("RETURN_%s", CurrentFunction)}, ListOfFunctionNames...)
-
 	// Set return address to the top of the stack
 	translatedCommand += fmt.Sprintf("@%s\n", fmt.Sprintf("RETURN_%s", CurrentFunction))
 	translatedCommand += "D=A\n"
@@ -277,7 +269,7 @@ func TranslateCallCommand(vmCommand VMCommand) (translatedCommand string) {
 
 func TranslateReturnCommand(vmCommand VMCommand) (translatedCommand string) {
 
-	// Assign temp EndFrame variable
+	// Store LCL in GPR 14
 	translatedCommand += "@LCL\n"
 	translatedCommand += "A=M\n"
 	translatedCommand += "D=A\n"
@@ -285,38 +277,26 @@ func TranslateReturnCommand(vmCommand VMCommand) (translatedCommand string) {
 	translatedCommand += "M=D\n"
 
 	// Get the return address
-	translatedCommand += "D\n"
+	translatedCommand += "@14\n"
 	translatedCommand += "A=M\n"
 	translatedCommand += "D=A\n"
-	translatedCommand += "@14\n"
+	translatedCommand += "@5\n"
+	translatedCommand += "D=D-A\n"
+	translatedCommand += "A=D\n"
+	translatedCommand += "D=M\n"
+
+	// Storing the retAddr in GPR 15
+	translatedCommand += "@15\n"
 	translatedCommand += "M=D\n"
 
-	// Decrement the stack pointer
+	// Set ARG to be the return value
 	translatedCommand += "@SP\n"
 	translatedCommand += "M=M-1\n"
-
-	// Set ARG to be the return value
 	translatedCommand += "@SP\n"
 	translatedCommand += "A=M\n"
 	translatedCommand += "D=M\n"
 	translatedCommand += "@ARG\n"
 	translatedCommand += "A=M\n"
-	translatedCommand += "M=D\n"
-
-	// Restore the memory region pointers
-	// Restore THAT
-	translatedCommand += "@LCL\n"
-	translatedCommand += "A=M-1\n"
-	translatedCommand += "D=M\n"
-	translatedCommand += "@THAT\n"
-	translatedCommand += "M=D\n"
-
-	// Restore THIS
-	translatedCommand += "@LCL\n"
-	translatedCommand += "A=M-1\n"
-	translatedCommand += "A=A-1\n"
-	translatedCommand += "D=M\n"
-	translatedCommand += "@THIS\n"
 	translatedCommand += "M=D\n"
 
 	// Restore SP to before the call state
@@ -326,8 +306,24 @@ func TranslateReturnCommand(vmCommand VMCommand) (translatedCommand string) {
 	translatedCommand += "@SP\n"
 	translatedCommand += "M=D\n"
 
+	// Restore the memory region pointers
+	// Restore THAT
+	translatedCommand += "@14\n"
+	translatedCommand += "A=M-1\n"
+	translatedCommand += "D=M\n"
+	translatedCommand += "@THAT\n"
+	translatedCommand += "M=D\n"
+
+	// Restore THIS
+	translatedCommand += "@14\n"
+	translatedCommand += "A=M-1\n"
+	translatedCommand += "A=A-1\n"
+	translatedCommand += "D=M\n"
+	translatedCommand += "@THIS\n"
+	translatedCommand += "M=D\n"
+
 	// Restore ARG
-	translatedCommand += "@LCL\n"
+	translatedCommand += "@14\n"
 	translatedCommand += "A=M-1\n"
 	translatedCommand += "A=A-1\n"
 	translatedCommand += "A=A-1\n"
@@ -336,7 +332,7 @@ func TranslateReturnCommand(vmCommand VMCommand) (translatedCommand string) {
 	translatedCommand += "M=D\n"
 
 	// Restore LCL
-	translatedCommand += "@LCL\n"
+	translatedCommand += "@14\n"
 	translatedCommand += "A=M-1\n"
 	translatedCommand += "A=A-1\n"
 	translatedCommand += "A=A-1\n"
@@ -345,22 +341,15 @@ func TranslateReturnCommand(vmCommand VMCommand) (translatedCommand string) {
 	translatedCommand += "@LCL\n"
 	translatedCommand += "M=D\n"
 
-	// A trick from https://github.com/golang/go/wiki/SliceTricks
-	// It pops the first value from the slice
-	fmt.Println(ListOfFunctionNames)
-	x := ListOfFunctionNames[len(ListOfFunctionNames)-1]
-	ListOfFunctionNames = ListOfFunctionNames[:len(ListOfFunctionNames)-1]
-	translatedCommand += fmt.Sprintf("@%s\n", x)
+	// Jump back to caller
+	translatedCommand += "@15\n"
+	translatedCommand += "A=M\n"
 	translatedCommand += "0;JMP\n"
 	return
 }
+
 func TranslateFunctionCommand(vmCommand VMCommand) (translatedCommand string) {
-	// translatedCommand += fmt.Sprintf("@%s.%s\n", vmCommand.file, vmCommand.name)
-	// ListOfDeclaredFunctions = append(ListOfDeclaredFunctions, vmCommand.name)
 	translatedCommand += fmt.Sprintf("(%s)\n", vmCommand.name)
-	// translatedCommand += "D=A\n"
-	// translatedCommand += "@SP\n"
-	// translatedCommand += "M=D+M\n"
 	noLocalVars, err := strconv.Atoi(vmCommand.value)
 	if err != nil {
 		panic(err)
