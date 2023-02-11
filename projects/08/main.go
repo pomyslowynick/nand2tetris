@@ -84,7 +84,6 @@ func ParseAndOpenVMFile(vmCommands *[]VMCommand) []VMCommand {
 					log.Fatal(err)
 				}
 				defer vmSourceFile.Close()
-				return *vmCommands
 			}
 		}
 		return *vmCommands
@@ -126,7 +125,7 @@ func WriteCode(vmCommands *[]VMCommand) {
 	defer outputFile.Close()
 
 	w := bufio.NewWriter(outputFile)
-	// _, err = fmt.Fprintf(w, "%s\n", WriteInit())
+	_, err = fmt.Fprintf(w, "%s\n", WriteInit())
 	if err != nil {
 		panic(err)
 	}
@@ -145,12 +144,13 @@ func WriteCode(vmCommands *[]VMCommand) {
 func WriteInit() (translatedCommand string) {
 	// Set SP to 256
 	translatedCommand += "@256\n"
-	translatedCommand += "A=D\n"
+	translatedCommand += "D=A\n"
 	translatedCommand += "@SP\n"
 	translatedCommand += "M=D\n"
 
 	// Call Sys.init
-	translatedCommand += "M=D\n"
+	sysInitCommand := VMCommand{commandType: "memory", command: "call", name: "Sys.init", value: "0"}
+	translatedCommand += TranslateCallCommand(sysInitCommand)
 	return
 }
 func TranslateCommandToAssembly(vmCommand VMCommand) (translatedCommand string) {
@@ -398,7 +398,7 @@ func TranslatePushMemoryRegion(vmCommand VMCommand) string {
 	case "constant":
 		return TranslatePushConstant(vmCommand.value)
 	case "static":
-		return TranslatePushStatic(vmCommand.value)
+		return TranslatePushStatic(vmCommand.value, vmCommand.file)
 	case "temp":
 		return TranslatePushTemp(vmCommand.value)
 	case "pointer":
@@ -419,7 +419,7 @@ func TranslatePopMemoryRegion(vmCommand VMCommand) string {
 	case "that":
 		return TranslatePopLATT("THAT", vmCommand.value)
 	case "static":
-		return TranslatePopStatic(vmCommand.value)
+		return TranslatePopStatic(vmCommand.value, vmCommand.file)
 	case "temp":
 		return TranslatePopTemp(vmCommand.value)
 	case "pointer":
@@ -490,7 +490,7 @@ func TranslatePopLATT(memoryRegion string, value string) (translatedCommand stri
 	return
 }
 
-func TranslatePopStatic(value string) (translatedCommand string) {
+func TranslatePopStatic(value string, file string) (translatedCommand string) {
 	// Decrement the stack pointer
 	translatedCommand += "@SP\n"
 	translatedCommand += "M=M-1\n"
@@ -498,7 +498,7 @@ func TranslatePopStatic(value string) (translatedCommand string) {
 	// Pop stack value on the memory region
 	translatedCommand += "A=M\n"
 	translatedCommand += "D=M\n"
-	translatedCommand += fmt.Sprintf("@Foo.%s\n", value)
+	translatedCommand += fmt.Sprintf("@Foo.%s.%s\n", value, file)
 	translatedCommand += "M=D\n"
 	return
 }
@@ -542,8 +542,8 @@ func TranslatePushLATT(memoryRegion string, value string) (translatedCommand str
 	return
 }
 
-func TranslatePushStatic(value string) (translatedCommand string) {
-	translatedCommand += fmt.Sprintf("@Foo.%s\n", value)
+func TranslatePushStatic(value string, file string) (translatedCommand string) {
+	translatedCommand += fmt.Sprintf("@Foo.%s.%s\n", value, file)
 	translatedCommand += "D=M\n"
 	translatedCommand += "@SP\n"
 	translatedCommand += "A=M\n"
@@ -796,9 +796,9 @@ func GetVMCommand(line string, file string) VMCommand {
 	splitLine := strings.Split(line, " ")
 	switch splitLine[0] {
 	case "push":
-		return VMCommand{commandType: "memory", command: "push", memoryRegion: splitLine[1], value: splitLine[2]}
+		return VMCommand{commandType: "memory", command: "push", memoryRegion: splitLine[1], value: splitLine[2], file: file}
 	case "pop":
-		return VMCommand{commandType: "memory", command: "pop", memoryRegion: splitLine[1], value: splitLine[2]}
+		return VMCommand{commandType: "memory", command: "pop", memoryRegion: splitLine[1], value: splitLine[2], file: file}
 	case "function":
 		return VMCommand{commandType: "memory", command: "function", name: splitLine[1], value: splitLine[2], file: file}
 	case "return":
@@ -806,7 +806,7 @@ func GetVMCommand(line string, file string) VMCommand {
 	case "label":
 		return VMCommand{commandType: "memory", command: "label", value: splitLine[1]}
 	case "call":
-		return VMCommand{commandType: "memory", command: "call", name: splitLine[1], value: splitLine[2], file: file}
+		return VMCommand{commandType: "memory", command: "call", name: splitLine[1], value: splitLine[2]}
 	case "goto":
 		return VMCommand{commandType: "memory", command: "goto", value: splitLine[1]}
 	case "if-goto":
